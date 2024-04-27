@@ -4,6 +4,6 @@ In the Job, the Minio server connects to Samba DC 4, assigns policies to a domai
 In API Scripts, commands are collected for curl to create-delete-download operation files for Minio S3 buckets using REST API commands, without the complexities of AWS SDK, AWS4 Signature.
 
 Minio deployment manifest + rest api scripts
-Здесь есть Dockefile на сборку Minio на базе Alpine Linux, манифест на разворачивание сервера Minio в Kubernetes с пост настройкой.
-В Job сервер Minio подключается к Samba DC 4, назначает политики доменному пользователю и доменной группе
-В API Scripts собраны команды для curl на создание-удаление-выгрузку файлов из бакетов Minio S3 с помощью REST API команд, без сложностей с AWS SDK, AWS4 Signature
+Р—РґРµСЃСЊ РµСЃС‚СЊ Dockefile РЅР° СЃР±РѕСЂРєСѓ Minio РЅР° Р±Р°Р·Рµ Alpine Linux, РјР°РЅРёС„РµСЃС‚ РЅР° СЂР°Р·РІРѕСЂР°С‡РёРІР°РЅРёРµ СЃРµСЂРІРµСЂР° Minio РІ Kubernetes СЃ РїРѕСЃС‚ РЅР°СЃС‚СЂРѕР№РєРѕР№.
+Р’ Job СЃРµСЂРІРµСЂ Minio РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ Рє Samba DC 4, РЅР°Р·РЅР°С‡Р°РµС‚ РїРѕР»РёС‚РёРєРё РґРѕРјРµРЅРЅРѕРјСѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ Рё РґРѕРјРµРЅРЅРѕР№ РіСЂСѓРїРїРµ
+Р’ API Scripts СЃРѕР±СЂР°РЅС‹ РєРѕРјР°РЅРґС‹ РґР»СЏ curl РЅР° СЃРѕР·РґР°РЅРёРµ-СѓРґР°Р»РµРЅРёРµ-РІС‹РіСЂСѓР·РєСѓ С„Р°Р№Р»РѕРІ РёР· Р±Р°РєРµС‚РѕРІ Minio S3 СЃ РїРѕРјРѕС‰СЊСЋ REST API РєРѕРјР°РЅРґ, Р±РµР· СЃР»РѕР¶РЅРѕСЃС‚РµР№ СЃ AWS SDK, AWS4 Signature
