@@ -1,0 +1,296 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-config
+data:
+  MINIO_HOST: ${MINIO_HOST}
+  MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+  MINIO_IDENTITY_LDAP_SERVER_ADDR: "${SAMBA_HOST}:636"
+  DOMAIN_MINIO_SVC_CONNECTOR: ${DOMAIN_MINIO_SVC_CONNECTOR}
+  DOMAIN_MINIO_USER_WRITER: ${DOMAIN_MINIO_USER_WRITER}
+  DOMAIN_MINIO_USER_READER: ${DOMAIN_MINIO_USER_READER}
+  MINIO_IDENTITY_LDAP_LOOKUP_BIND_DN: "CN=${DOMAIN_MINIO_SVC_CONNECTOR},CN=Users,${DOMAIN_DN_PATH}"
+  MINIO_IDENTITY_LDAP_GROUP_SEARCH_BASE_DN: "OU=${DOMAIN_GROUP_PREFIX}Groups,${DOMAIN_DN_PATH}"
+  MINIO_IDENTITY_LDAP_USER_DN_SEARCH_BASE_DN: "OU=${DOMAIN_GROUP_PREFIX}Users,${DOMAIN_DN_PATH}"
+  MINIO_IDENTITY_LDAP_USER_DN_SEARCH_FILTER: "(&(objectCategory=user)(sAMAccountName=%s))"
+  MINIO_IDENTITY_LDAP_GROUP_SEARCH_FILTER: "(&(objectClass=group)(member=%d))"
+  DOMAIN_GLOBAL_ADMIN: "${DOMAIN_GLOBAL_ADMIN}"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: minio-pv.${NAMESPACE}
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 25Gi
+  accessModes:
+    - ReadWriteOnce
+  nfs:
+    path: "${NFS_SERVER_DATA_PATH}/minio"
+    server: ${NFS_SERVER}
+  volumeMode: Filesystem
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pv-claim.${NAMESPACE}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 25Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      imagePullSecrets:
+        - name: registry-credentials
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: minio-pv-claim.${NAMESPACE}
+        - name: ca-certificate
+          configMap:
+            name: ca-certificate
+        - name: server-certificate
+          secret:
+            secretName: minio-certificate-secret
+        - name: minio-init-scripts
+          configMap:
+            name: minio-init-scripts
+      containers:
+        - name: minio
+          image: ${REGISTRY_HOST}.${DOMAIN_FQDN}/minio:latest
+          args:
+            - server
+            - /data
+            - --console-address
+            - ":9001"
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: MINIO_PUBLIC_CERT_FILE
+              value: "/root/.minio/certs/public.crt"
+            - name: MINIO_PRIVATE_KEY_FILE
+              value: "/root/.minio/certs/private.key"
+          volumeMounts:
+            - name: storage
+              mountPath: "/data"
+            - name: ca-certificate
+              mountPath: /usr/local/share/ca-certificates/ca.crt
+              subPath: ca.crt
+            - mountPath: /root/.minio/certs/public.crt
+              name: server-certificate
+              subPath: tls.crt
+            - mountPath: /root/.minio/certs/private.key
+              name: server-certificate
+              subPath: tls.key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${MINIO_HOST}
+spec:
+  selector:
+    app: minio
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+      name: api
+    - protocol: TCP
+      port: 9001
+      targetPort: 9001
+      name: console
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+  name: ${MINIO_HOST}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ${MINIO_HOST}.${NAMESPACE}.svc.cluster.local
+        - ${MINIO_HOST}.${DOMAIN_FQDN}
+      secretName: minio-certificate-secret
+  rules:
+    - host: ${MINIO_HOST}.${NAMESPACE}.svc.cluster.local
+      http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: ${MINIO_HOST}
+                port:
+                  number: 9000
+    - host: ${MINIO_HOST}.${DOMAIN_FQDN}
+      http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: ${MINIO_HOST}
+                port:
+                  number: 9001
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init-job
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: registry-credentials
+      containers:
+        - name: create-buckets
+          image: ${REGISTRY_HOST}.${DOMAIN_FQDN}/minioclient_samba_tool:1.1
+          command: ["/bin/sh", "/minio_init.sh"]
+          env:
+            - name: MINIO
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_HOST
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: MINIO_IDENTITY_LDAP_SERVER_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_IDENTITY_LDAP_SERVER_ADDR
+            - name: MINIO_IDENTITY_LDAP_LOOKUP_BIND_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_IDENTITY_LDAP_LOOKUP_BIND_DN
+            - name: MINIO_IDENTITY_LDAP_LOOKUP_BIND_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secrets
+                  key: DOMAIN_MINIO_SVC_CONNECTOR_PASSWORD
+            - name: MINIO_IDENTITY_LDAP_GROUP_SEARCH_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_IDENTITY_LDAP_GROUP_SEARCH_BASE_DN
+            - name: MINIO_IDENTITY_LDAP_USER_DN_SEARCH_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_IDENTITY_LDAP_USER_DN_SEARCH_BASE_DN
+            - name: MINIO_IDENTITY_LDAP_USER_DN_SEARCH_FILTER
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_IDENTITY_LDAP_USER_DN_SEARCH_FILTER
+            - name: MINIO_IDENTITY_LDAP_GROUP_SEARCH_FILTER
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: MINIO_IDENTITY_LDAP_GROUP_SEARCH_FILTER
+            - name: DOMAIN_DN_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: samba-dc-config
+                  key: DOMAIN_DN_PATH
+            - name: DOMAIN_GROUP_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: samba-dc-config
+                  key: DOMAIN_GROUP_PREFIX
+            - name: DOMAIN_GLOBAL_ADMIN
+              valueFrom:
+                configMapKeyRef:
+                  name: samba-dc-config
+                  key: DOMAIN_GLOBAL_ADMIN
+            - name: SAMBA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: samba-dc-config
+                  key: SAMBA_HOST
+            - name: DOMAIN_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: samba-dc-secrets
+                  key: DOMAIN_ADMIN_PASSWORD
+            - name: DOMAIN_MINIO_SVC_CONNECTOR
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: DOMAIN_MINIO_SVC_CONNECTOR
+            - name: DOMAIN_MINIO_SVC_CONNECTOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secrets
+                  key: DOMAIN_MINIO_SVC_CONNECTOR_PASSWORD
+            - name: DOMAIN_MINIO_USER_WRITER
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: DOMAIN_MINIO_USER_WRITER
+            - name: DOMAIN_MINIO_USER_WRITER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secrets
+                  key: DOMAIN_MINIO_USER_WRITER_PASSWORD
+            - name: DOMAIN_MINIO_USER_READER
+              valueFrom:
+                configMapKeyRef:
+                  name: minio-config
+                  key: DOMAIN_MINIO_USER_READER
+            - name: DOMAIN_MINIO_USER_READER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secrets
+                  key: DOMAIN_MINIO_USER_READER_PASSWORD
+          volumeMounts:
+            - mountPath: /minio_init.sh
+              name: minio-init-scripts
+              subPath: minio_init.sh
+            - name: ca-certificate
+              mountPath: /usr/local/share/ca-certificates/ca.crt
+              subPath: ca.crt
+      volumes:
+        - name: minio-init-scripts
+          configMap:
+            name: minio-init-scripts
+        - name: ca-certificate
+          configMap:
+            name: ca-certificate
+      restartPolicy: Never

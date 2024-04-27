@@ -1,0 +1,3 @@
+kubectl create secret generic minio-secrets --from-literal=MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD --from-literal=DOMAIN_MINIO_SVC_CONNECTOR_PASSWORD=$DOMAIN_MINIO_SVC_CONNECTOR_PASSWORD --from-literal=DOMAIN_MINIO_USER_WRITER_PASSWORD=$DOMAIN_MINIO_USER_WRITER_PASSWORD --from-literal=DOMAIN_MINIO_USER_READER_PASSWORD=$DOMAIN_MINIO_USER_READER_PASSWORD
+kubectl create configmap minio-init-scripts --from-file=minio_init.sh=./Deployment/minio_init.sh
+kubectl create secret tls minio-certificate-secret --cert=./certs/${MINIO_HOST}.${DOMAIN_FQDN}.crt --key=./certs/${MINIO_HOST}.${DOMAIN_FQDN}.key
