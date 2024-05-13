@@ -1,8 +1,8 @@
 #!/bin/sh
-data=$(echo -n '{"accessKey":"'"$MINIO_USER_WRITER"'","secretKey":"'"$MINIO_USER_WRITER_PASSWORD"'"}')
+data=$(echo -n '{"accessKey":"'"$MINIO_USER"'","secretKey":"'"$MINIO_USER_PASSWORD"'"}')
 curl --location "https://${MINIO_HOST}.${DOMAIN_FQDN}/api/v1/login" --header 'Content-Type: application/json' --cookie-jar cookies.txt --data "$data"
 
-targetPath="${backet}/"
+targetPath="iaas-base/RPM/"
 encodedTargetPath=$(echo -n ${targetPath}| base64 -w 0)
 
 response=$(curl -X GET "https://${MINIO_HOST}.${DOMAIN_FQDN}/api/v1/buckets/${backet}/objects?prefix=$encodedTargetPath&all_versions=false&bypass=false&recursive=true" --cookie cookies.txt)
